@@ -1,19 +1,11 @@
-FROM adoptopenjdk/openjdk11:alpine-slim as build
+# Use a lightweight Java runtime
+FROM eclipse-temurin:17-jre-alpine
+
+# Create app directory
 WORKDIR /app
 
-COPY mvnw .
-COPY .mvn .mvn
-COPY pom.xml .
-COPY src src
+# Copy the jar
+COPY target/demo-0.0.1-SNAPSHOT.jar app.jar
 
-RUN ./mvnw package
-COPY target/*.jar app.jar
-
-FROM adoptopenjdk/openjdk11:alpine-slim
-VOLUME /tmp
-RUN addgroup --system javauser && adduser -S -s /bin/false -G javauser javauser
-WORKDIR /app
-COPY --from=build /app/app.jar .
-RUN chown -R javauser:javauser /app
-USER javauser
-ENTRYPOINT ["java","-jar","app.jar"]
+# Run the app as root
+ENTRYPOINT ["java", "-jar", "app.jar"]
