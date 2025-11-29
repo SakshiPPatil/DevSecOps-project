@@ -1,0 +1,73 @@
+- name: Build, Push, and Deploy Docker Container
+  hosts: localhost
+  become: yes
+
+  vars:
+    image_name: demo1
+    dockerhub_user: sakshippatil
+    jar_file: "/data/sureops/test/deployment/71/DevSecOps-project/target/demo-0.0.1-SNAPSHOT.jar"
+    container_port: 8080
+    host_port: 8063
+    dockerfile_path: /data/sureops/test/deployment/71/DevSecOps-project
+
+  pre_tasks:
+    - name: Generate timestamp ONCE
+      set_fact:
+        build_tag: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+  tasks:
+
+    - name: Ensure JAR file exists
+      stat:
+        path: "{{ jar_file }}"
+      register: jar_file_stat
+
+    - name: Fail if JAR is missing
+      fail:
+        msg: "JAR file not found! Please build the project first."
+      when: not jar_file_stat.stat.exists
+
+    - name: Build Docker image
+      community.docker.docker_image:
+        build:
+          path: "{{ dockerfile_path }}"
+          dockerfile: Dockerfile
+          args:
+            JAR_FILE: "{{ jar_file }}"
+        name: "{{ image_name }}"
+        tag: "{{ build_tag }}"
+        source: build
+        force_source: yes
+        state: present
+
+    - name: Tag version image
+      command: >
+        docker tag {{ image_name }}:{{ build_tag }}
+        {{ dockerhub_user }}/{{ image_name }}:{{ build_tag }}
+
+    - name: Push version tag
+      command: >
+        docker push {{ dockerhub_user }}/{{ image_name }}:{{ build_tag }}
+
+    - name: Tag as latest
+      command: >
+        docker tag {{ image_name }}:{{ build_tag }}
+        {{ dockerhub_user }}/{{ image_name }}:latest
+
+    - name: Push latest
+      command: >
+        docker push {{ dockerhub_user }}/{{ image_name }}:latest
+
+    - name: Stop existing container
+      community.docker.docker_container:
+        name: "{{ image_name }}"
+        state: absent
+        force_kill: yes
+
+    - name: Deploy container
+      community.docker.docker_container:
+        name: "{{ image_name }}"
+        image: "{{ dockerhub_user }}/{{ image_name }}:latest"
+        state: started
+        ports:
+          - "{{ host_port }}:{{ container_port }}"

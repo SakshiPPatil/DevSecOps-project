@@ -1,0 +1,5 @@
+---
+- hosts: localhost
+  tasks:
+    - name: Show Docker info
+      community.docker.docker_info:

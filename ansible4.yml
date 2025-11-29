@@ -1,0 +1,59 @@
+- name: Build and Deploy Docker Container Locally
+  hosts: localhost
+  become: yes
+
+  vars:
+    image_name: demo1
+    jar_file: "/data/sureops/test/deployment/71/DevSecOps-project/target/demo-0.0.1-SNAPSHOT.jar"
+    container_port: 8080
+    host_port: 8063
+    dockerfile_path: "/data/sureops/test/deployment/71/DevSecOps-project"
+
+  tasks:
+    - name: Generate timestamp once
+      set_fact:
+        build_tag: "{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}"
+
+    - name: Ensure JAR file exists
+      stat:
+        path: "{{ jar_file }}"
+      register: jar_file_stat
+
+    - name: Fail if JAR is missing
+      fail:
+        msg: "JAR file not found! Build the project first."
+      when: not jar_file_stat.stat.exists
+
+    - name: Build Docker image with timestamp tag
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ build_tag }}"
+        source: build
+        build:
+          path: "{{ dockerfile_path }}"
+          dockerfile: Dockerfile
+          args:
+            JAR_FILE: "{{ jar_file }}"
+        state: present
+
+    - name: Tag timestamp image as latest
+      community.docker.docker_image_tag:
+        name: "{{ image_name }}:{{ build_tag }}"
+        repository:
+          - "{{ image_name }}:latest"
+
+    - name: Stop existing container if running
+      community.docker.docker_container:
+        name: "{{ image_name }}"
+        state: absent
+        force_kill: yes
+
+    - name: Deploy container locally using latest
+      community.docker.docker_container:
+        name: "{{ image_name }}"
+        image: "{{ image_name }}:latest"
+        state: started
+        pull: no
+        recreate: yes
+        ports:
+          - "{{ host_port }}:{{ container_port }}"
